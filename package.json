@@ -8,7 +8,9 @@
   "scripts": {
     "build": "tsc -p ./",
     "dev": "tsc -p ./ -w",
-    "test": "mocha test.js"
+    "test": "npm run build:test && npm run run:test",
+    "build:test": "tsc -p ./tests",
+    "run:test": "mocha ./.test-dist/tests"
   },
   "repository": {
     "type": "git",
@@ -29,9 +31,16 @@
   },
   "homepage": "https://github.com/oliver021/ts-starterkit#readme",
   "devDependencies": {
-    "chai": "^4.3.0",
+    "@types/chai": "^4.3.1",
+    "@types/deep-equal": "^1.0.1",
+    "@types/mocha": "^9.1.1",
+    "chai": "^4.3.1",
+    "deep-equal": "^2.0.5",
     "mocha": "^10.0.0",
     "tslint": "^6.1.3",
     "typescript": "^4.1.5"
+  },
+  "dependencies": {
+    "node-sql-parser": "^4.3.0"
   }
 }
