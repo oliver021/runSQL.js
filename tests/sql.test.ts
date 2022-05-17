@@ -1,5 +1,8 @@
 import { expect } from 'chai';
-import { tokenize } from '../src/sql';
+import { tokenize, buildExpression, ExpressionContainer } from '../src/sql';
+import { TokensIteration } from '../src/TokensIteration';
+import { inspect } from  'util'
+
 
 describe("Test sql lexer", () => {
     it("should tokenize the sql statement", () => {
@@ -53,5 +56,55 @@ describe("Test sql lexer", () => {
         sql = "SELECT db.test.query";
         tokens = tokenize(sql);
         expect(tokens).to.deep.equal(["SELECT", "db", ".", "test", "." ,"query"]);
+
+        sql = "SELECT db.test.query.test <> 1";
+        tokens = tokenize(sql);
+        expect(tokens).to.deep.equal(["SELECT", "db", ".", "test", ".", "query", ".", "test", "<>", "1"]);
+
+        sql = "SELECT ((1 + 1) * 2)";
+        tokens = tokenize(sql);
+        expect(tokens).to.deep.equal(["SELECT", "(", "(", "1", "+", "1", ")", "*", "2", ")"]);
+    });
+});
+
+describe("Test sql syntaxt parser", () => {
+    it("should parse the sql statement", () => {
+        var tokens = tokenize("SELECT data");
+        // make sure we have a valid token list
+        // convert into Iterable
+        var iter = new TokensIteration(tokens);
+        // build the expression
+        var root = new ExpressionContainer();
+        buildExpression(iter, root, []);
+        console.log(root);
+        // expr should be principal keywords
+        expect(root.type).to.equal("RootClosure");
+        expect(root.getPrincipalKeyword()).to.equal("SELECT");
+
+        /* never mind these stuffs
+        var tokens = tokenize("SELECT data FROM table");
+        // make sure we have a valid token list
+        // convert into Iterable
+        var iter = new TokensIteration(tokens);
+        // build the expression
+        var root = new ExpressionContainer();
+        buildExpression(iter, root, []);
+        console.log(root);
+        buildExpression(iter, root, []);
+        console.log(root);
+        */
+
+        let showOptions = {showHidden: false, depth: null, colors: true};
+        var tokens = tokenize("SELECT ((amount1 + amount2) * rate) - discount");
+        console.log(inspect(tokens, showOptions))
+
+        // make sure we have a valid token list
+        // convert into Iterable
+        var iter = new TokensIteration(tokens);
+        // build the expression
+        var root = new ExpressionContainer();
+        buildExpression(iter, root, []);
+        console.log(inspect(root, showOptions))
+
     });
 });

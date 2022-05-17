@@ -1,3 +1,5 @@
+import { TokensIteration } from "./TokensIteration";
+
 /** 
  * @function
  * @description Tokenize the SQL statement.
@@ -18,27 +20,34 @@ export function tokenize(sql: string): string[] {
     // 8. A word is a sequence of letters, digits, or underscores.
     // 9. A string literal is a sequence of characters surrounded by single quotes.
     // 10. A number literal is a sequence of digits.
-    // 11. A boolean literal is a sequence of the letters TRUE or FALSE.
-    // 12. A null literal is a sequence of the letters NULL.
-    // 13. A function is a sequence of letters, digits, or underscores.
-    // 14. A column name is a sequence of letters, digits, or underscores.
-    // 15. A table name is a sequence of letters, digits, or underscores.
-    // 16. A column alias is a sequence of letters, digits, or underscores.
-    // 17. Keywords are case-insensitive.
-    // 18. A string literal is case-insensitive.
+    // 18. A string literal is case-insensitive include quotes.
     // 19. A column name is case-insensitive.
     // 20. A table name is case-insensitive.
     // 21. A column alias is case-insensitive.
     // 22. Tokens are being returned in the order they appear in the statement.
     // 23. A token is a sequence of characters that is not a whitespace, comment, or delimiter.
+    // 24. seperate the parenthesis tokens from the other parenthesis tokens
+    // 25. seperate the comma tokens from the other comma tokens
+    // 26. seperate the semicolon tokens from the other semicolon tokens
 
-    let regex = /'([^']*)'|`([^`]*)`|"([^"]*)"|\b(?:[A-Za-z0-9_]+)\b|[^\s\w]+/g;
+ 
+    let regex = /'([^']*)'|`([^`]*)`|"([^"]*)"|\b(?:[A-Za-z0-9_]+)\b|[^\s\w]+/g; // decrapted
     let tokens = [];
     let match;
     while (match = regex.exec(sql)) {
         tokens.push(match[0]);
     }
-    return tokens;
+    return tokens.reduce((acc: string[], token) => {
+        // regex to detect a sequence of parenthesis
+        if(/^\({2}|\){2}.*/.test(token)){
+            token.split('').forEach(parenthesis => {
+                acc.push(parenthesis);
+            });
+        }else{
+            acc.push(token);
+        }
+        return acc;
+    }, []);   
 }
 
 // define a enum with cardinality sql query types
@@ -69,15 +78,15 @@ export interface SQLParserResult {
 }
 
 // the expression instance types
-export type ExpressionType = "FunctionExpression"| "IndentifierExpression" | "UnaryExpression" 
-|"BinaryExpression"|"ListExpression"| "Literal" | "UNKNOWN";
+export type ExpressionType = "FunctionExpression"| "IdentifierExpression" | "UnaryExpression" 
+|"BinaryExpression"|"ListExpression"| "Literal" | "UNKNOWN" | "RootClosure";
 
 // define the class ExpressionClosure
 // expression closure is a set of rules to parse the expression
 export class ExpressionClosure {
     public expressionType: ExpressionType;
     public expression: FunctionExpression | IdentifierExpression | UnaryExpression|
-     BinaryExpression| ListExpression| LiteralExpression | SelectClosure;
+     BinaryExpression| ListExpression| LiteralExpression | RootClosure;
 
     // constructor
     constructor(expressionType: ExpressionType, expression: FunctionExpression | IdentifierExpression | UnaryExpression|
@@ -431,7 +440,7 @@ function isPrincipalKeyword(keyword: string): boolean
 // PRINCIPAL_KEYWORDS instance of the class KeywordClosure
 // ROOT_EXPRESSION instance of the class ExpressionClosure
 
-export class ASTSQL{
+export class RootClosure{
     public PRINCIPAL_KEYWORDS: KeywordClosure;
     public ROOT_EXPRESSION: ExpressionClosure;
 
@@ -465,11 +474,11 @@ enum KEYWORDS{
     ALL,
     AS,
     ASC,
-    DESC
+    DESC,
+    INTO,
+    VALUES,
 }
-
-/* parser functions */
-
+const ALL_KEYWORDS = Object.values(KEYWORDS);
 /**
  * @function isKeyword
  * @description function to check if the string is a keyword
@@ -481,7 +490,7 @@ enum KEYWORDS{
  * @example isKeyword("") // false
  */
 export function isKeyword(keyword: string): boolean{
-    return Object.values(KEYWORDS).includes(keyword);
+    return ALL_KEYWORDS.includes(keyword);
 }
 
 // the tokens types
@@ -564,143 +573,12 @@ function isOpenParenthesis(token: string): boolean{
     return token == "(";
 }
 
-function isLiteral(token: string): boolean{
-    return isNumber(token) || isString(token);
-}
-
 function isComma(token: string): boolean{
     return token == ",";
 }
 
 function isSemicolon(token: string): boolean{
     return /^[;]$/.test(token);
-}
-
-// a class that represent tokens
-class TokensIteration {
-
-    /**
-     * @property {Token[]} tokens
-     * @description the tokens array
-     * @public
-     */
-    public tokens: Token[];
-    
-    /**
-     * @property {number} index
-     * @description the index of the token
-     * @public
-     * @default 0
-     */
-    private index: number = 0;
-
-    // the constructor to initialize the tokens
-    constructor(tokensSrc: string[])
-    {
-        this.tokens = tokensSrc.map(x => ({ type: analyzeToken(x), value: x }));
-    }
-
-    /**
-     * @function next
-     * @description get the next token
-     * @returns {Token}
-     * @example next() // {type: TokenType.KEYWORD, value: "SELECT"}    
-     */
-    public next(): Token {
-        return this.tokens[this.index++];
-    }
-
-    /**
-     * @function peek
-     * @description get the next token without incrementing the index
-     * @returns {Token}
-     */
-    public peek(): Token {
-        return this.tokens[this.index];
-    }
-
-    /**
-     * @function takeFrom
-     * @description get tokens from the current index to the passed index
-     * @param {number} index
-     * @returns {Token[]}
-     * @example take(2) // [{type: TokenType.KEYWORD, value: "SELECT"}, {type: TokenType.IDENTIFIER, value: "table1"}]
-     * @throws {Error} if the index is out of range
-     */
-    public takeFrom(index: number): Token[] {
-        if(index < 0 || index > this.tokens.length){
-            throw new Error("index out of range");
-        }
-        return this.tokens.slice(this.index, index);
-    }
-
-    /**
-     * @function takeUntil
-     * @description get tokens from the current index to the passed fucntion evaluation
-     * @param {(token: Token) => boolean} predicate
-     * @param throwAtEnd {boolean} if true, throw an error if the predicate is not met, otherwise return an rest of the tokens
-     * @returns {Token[]}
-     * @example takeUntil(token => token.type === TokenType.EOF) // [{type: TokenType.KEYWORD, value: "SELECT"}, {type: TokenType.IDENTIFIER, value: "table1"}]
-     * @throws {Error} if the index is out of range
-     * @throws {Error} if the predicate is not a function
-     */
-    public takeUntil(predicate: (token: Token) => boolean, throwAtEnd: boolean = false): Token[] {
-        if(typeof predicate !== "function"){
-            throw new Error("predicate is not a function");
-        }
-     
-        let index = this.tokens.findIndex(predicate);
-     
-        if(index === -1 && throwAtEnd){
-            throw new Error("predicate not found");
-        }else if(throwAtEnd === false){
-            // then return the rest of the tokens
-            index = this.tokens.length;
-            return this.tokens.slice(this.index, index);
-        }
-
-        return this.takeFrom(index);
-    }
-
-    /**
-     * @function hasNext
-     * @description check if there is a next token
-     * @returns {boolean}
-     */
-    public hasNext(): boolean {
-        return this.index < this.tokens.length;
-    }
-
-    /**
-     * @function seek
-     * @description set the index to the given value
-     * @param {number} index
-     * @returns {void}
-     * @example seek(2) // the index is now 2
-     */
-    public seek(index: number): void {
-        this.index = index;
-    }
-
-    /**
-     * @function getIndex
-     * @description get the index of the token
-     * @returns {number}
-     * @example getIndex() // 2
-     */
-    public getIndex(): number {
-        return this.index;
-    }
-
-    /**
-     * @function incrementIndex
-     * @description increment the index by 1
-     * @returns {void}
-     * @example incrementIndex() // the index is now 3
-     */
-    public incrementIndex(): void {
-        this.index++;
-    }
 }
 
 // operators
@@ -779,7 +657,7 @@ export enum OperatorType{
  * @param {OperatorType} operatorType
  * @returns {string}
  */
-function getOperatorName(token: string): OperatorType{
+export function getOperatorName(token: string): OperatorType{
     switch(token){
         case '=':
             return OperatorType.EQUAL;
@@ -844,56 +722,138 @@ function getOperatorName(token: string): OperatorType{
  * @class ExpressionTree
  * @description the expression tree contains expressions information
  */
-class ExpressionTree{
+export class ExpressionContainer{
     public type: ExpressionType;
     public info: {[key:string]:any} = {};
-    public left: ExpressionTree|null = null;
-    public right: ExpressionTree|null = null;
 
     // the constructor initialize type
     constructor(type: ExpressionType = "UNKNOWN"){
         this.type = type;
     }
-}
 
-function processTokens(tokens: string[]): ASTSQL[] {
-    var result: ASTSQL[] = [];
-    var tokenIterator = new TokensIteration(tokens);
-    // iterate for all tokens
-    while(tokenIterator.hasNext()){
-        // the next token should in an PRINCIPAL_KEYWORD
-        let current = tokenIterator.peek();
-        if(current.type === TokenType.KEYWORD  && isPrincipalKeyword(current.value)){
-            // increment the iterator
-            tokenIterator.incrementIndex();
-            // the next tokens should are one ROOT_EXPRESSION
-            result.push(new ASTSQL(current.value as KeywordClosure, processRootExpression(tokenIterator)));
-        }else{
-            throw new Error('Invalid expression: ' + current.value);
+    // the function to get one key in info
+    // if key not found, return default value
+    public get(key: string, defaultVal: any = null): any{
+        return this.info[key] || defaultVal;
+    }
+
+    // the function to set one key in info
+    public set(key: string, value: any): void{
+        this.info[key] = value;
+    }
+
+    // the function to set key 'LEFT_NODE' validate if is  ExpressionContainer
+    public setLeftNode(node: ExpressionContainer): void{
+        if(!(node instanceof ExpressionContainer)){
+            throw new Error('Left node must be an ExpressionContainer');
         }
-
+        this.set('LEFT_NODE', node);
     }
 
-    return result;
-
-    // function to process the root expression
-    function processRootExpression(tokenIterator: TokensIteration): ExpressionClosure{
-        // find all tokens until other PRINCIPAL_KEYWORD
-        // use takeUntil to find the tokens
-        let tokens = tokenIterator.takeUntil(token => token.type === TokenType.KEYWORD && isPrincipalKeyword(token.value));
-
+    // the function to set key 'RIGHT_NODE' validate if is  ExpressionContainer
+    public setRightNode(node: ExpressionContainer): void{
+        if(!(node instanceof ExpressionContainer)){
+            throw new Error('Right node must be an ExpressionContainer');
+        }
+        this.set('RIGHT_NODE', node);
     }
-}
 
-/**
- * @function buildExpressionTree
- * @description build the expression tree from the tokens
- * @param tokens the tokens to build the expression tree
- * @returns the expression tree
- * @throws Error if the tokens is invalid
- */
-function buildExpressionTree(tokens: string[]): ExpressionTree{
+    // the function to set key 'OPERATOR' validate if is  OperatorSource
+    public setOperator(operator: string): void{
+        if(!OPERATOR_SOURCES.includes(operator)){
+            throw new Error('Operator must be an OperatorSource');
+        }
+        this.set('OPERATOR', operator);
+    }
 
+    // the function to set key 'NAME' in info
+    public setName(name: string): void{
+        this.set('NAME', name);
+    }
+
+    // get name
+    public getName(): string{
+        return this.get('NAME');
+    }
+
+    // the function to set key 'LIST' validate if is  ExpressionContainer[]
+    public setList(list: ExpressionContainer[] | ExpressionContainer): void{
+        if(!(list instanceof Array)){
+            list = new Array(list);
+        }
+        this.set('LIST', list);
+    }
+
+    // the function to set key 'APPEND_KEYWORDS' validate if is  string
+    public setAppendKeywords(keywords: string[]): void{
+        if(!(keywords instanceof Array)){
+            throw new Error('Keywords must be an Array');
+        }
+        this.set('APPEND_KEYWORDS', keywords);
+    }
+
+    // the function to set key 'PRINCIPAL_KEYWORD' validate if is  string
+    public setPrincipalKeyword(keyword: string): void{
+        if(typeof keyword !== 'string'){
+            throw new Error('Keyword must be a string');
+        }
+        this.set('PRINCIPAL_KEYWORD', keyword);
+    }
+
+    // get left node
+    public getLeftNode(): ExpressionContainer{
+        return this.get('LEFT_NODE');
+    }
+
+    // get right node
+    public getRightNode(): ExpressionContainer{
+        return this.get('RIGHT_NODE');
+    }
+
+    // get operator
+    public getOperator(): string{
+        return this.get('OPERATOR');
+    }
+
+    // get list
+    public getList(): ExpressionContainer[]{
+        return this.get('LIST') || [];
+    }
+
+    // get append keywords
+    public getAppendKeywords(): string[]{
+        return this.get('APPEND_KEYWORDS') || [];
+    }
+
+    // get principal keyword
+    public getPrincipalKeyword(): string{
+        return this.get('PRINCIPAL_KEYWORD');
+    }
+
+    // the function to know if the expression is a literal
+    public isLiteral(): boolean{
+        return this.type === "Literal";
+    }
+
+    // the function to know if the expression is a function
+    public isFunction(): boolean{
+        return this.type === "FunctionExpression";
+    }
+
+    // the function to know if the expression is a binary expression
+    public isBinaryExpression(): boolean{
+        return this.type === "BinaryExpression";
+    }
+
+    // the function to know if the expression is a unary expression
+    public isUnaryExpression(): boolean{
+        return this.type === "UnaryExpression";
+    }
+
+    // the function to know if the expression is a identifier
+    public isIdentifier(): boolean{
+        return this.type === "IdentifierExpression";
+    }
 }
 
 // the usage of the expression tree
@@ -950,121 +910,224 @@ function buildExpressionTree(tokens: string[]): ExpressionTree{
  * @throws Error if the tokens is invalid
  * @throws Error if the tokens is not a valid expression
  */
-function buildExpr(tokens: TokensIteration, belong: ExpressionTree, currentExcptection = "Expression"): void{
-    
-    // if not has more tokens and the exception is Expression or ListExpression then throw error
-    if(!tokens.hasNext() && 
-    (currentExcptection === "Expression" || currentExcptection === "ListExpression")){
-        throw new Error('Invalid expression: ' + tokens.peek().value);
-    }
-
-    let currentToken = tokens.next();
-    
-    // evaluate current token by excpected expression
-    switch(currentExcptection){
-    // if the current token is a literal, operator, identifier or opening parenthesis
-    case "Expression":
-        // the first token should be a literal, identifier or expression
-        let literal = isLiteral(currentToken.value),
-        identifier = currentToken.type === TokenType.IDENTIFIER,
-        openParenthesis = isOpenParenthesis(currentToken.value),
-        operator = isOperator(currentToken.value);
-        if(literal || identifier || openParenthesis || operator){
-            // check if has more tokens
-            if(tokens.hasNext()){
-
-                // find the next token again
-                currentToken = tokens.next();
-
-                // base on the current token, decide the next expected expression
-                if(literal){
-                    // the literals only excepts the next token is a operator
-                    // otherwise throw error
-                    if(isOperator(currentToken.value)){
-                        belong.type = "BinaryExpression";
-                        belong.info['operator'] = currentToken.value;
-                        belong.left = new ExpressionTree("Literal");
-                        belong.left.info['type'] = currentToken.type;
-                        belong.left.info['value'] = currentToken.value;
-                        belong.right = new ExpressionTree();
-                        buildExpr(tokens, belong.right, "Expression");
-                    }else{
-                        // crash with unexpected token
-                        throw new Error('Invalid expression, unexcpected token: ' + currentToken);
+export function buildExpression(tokens: TokensIteration, belong: ExpressionContainer, state: string[]): void{
+        
+    let current = tokens.peekAndNext();
+console.log(current.value);
+        // switch for every token type
+        // generate all token type cases
+        switch(current.type){
+            case TokenType.KEYWORD:
+                if(isPrincipalKeyword(current.value)){
+                    // verify that is not prev not principal keyword state scope
+                    if(state.length > 0 && state[state.length - 1] !== 'PRINCIPAL_KEYWORD'){
+                        throw new Error('Unexpected keyword ' + current.value);
                     }
-                }else if(identifier){
-                    // the next token should be a operator
-                    currentToken = tokens.next();
-
-                    // the identifier only excepts the next token is a operator or a opening parenthesis
-                    // also can accept the next token is a sequence other keywords until the final expression
-                    if(isOperator(currentToken.value)){
-                        belong.type = "BinaryExpression";
-                        belong.info['operator'] = currentToken.value;
-                        belong.left = new ExpressionTree("IndentifierExpression");
-                        belong.left.info['name'] = currentToken.value;
-                        belong.right = new ExpressionTree();
-                        buildExpr(tokens, belong.right, "Expression");
-                    }else if(isOpenParenthesis(currentToken.value)){
-                        // then exception is ListExpression because it's function
-                        belong.type = "FunctionExpression";
-                        belong.info['name'] = currentToken.value;
-                        belong.left = new ExpressionTree("ListExpression");
-                        buildExpr(tokens, belong.left, "ListExpression");
-                    }else if(isComma(currentToken.value)){
-                        
-                    }else{
+                    // if the token is a principal keyword
+                    // push 'PRINCIAPAL_KEYWORD' in the state
+                    // set 'PRINCIPAL_KEYWORD' in the belong
+                    state.push('PRINCIAPAL_KEYWORD');
+                    belong.setPrincipalKeyword(current.value);
+                    belong.type = "RootClosure";
+                    let expr = new ExpressionContainer();
+                    buildExpression(tokens, expr, state);
+                    belong.set("expr", expr);
+                    state.pop();
+                }else{
+                    // crash if state is empty
+                    if(state.length === 0){
+                        throw new Error(`Invalid expression: ${current.value}`);
                     }
-                } else if(openParenthesis){
-                    // the next token should be a expression
-                    buildExpr(tokens, belong, "Expression");
-                } else if(operator){
-                    // after the operator, the next token should be a indentifier or literal
-                    // then the belong Expresion is UnaryExpression with left Expression
-                    currentToken = tokens.peek();
-                    if(isLiteral(currentToken.value) || currentToken.type == TokenType.IDENTIFIER || isOpenParenthesis(currentToken.value)){
-                        belong.type = "UnaryExpression";
-                        belong.info['operator'] = currentToken.value;
-                        belong.left = new ExpressionTree();
-                        buildExpr(tokens, belong.left, "Expression");
+
+                    // set append keywords
+                    belong.setAppendKeywords(
+                        tokens.takeUntil(x => ALL_KEYWORDS.includes(x.value))
+                        .map(x => x.value)
+                    );
+                }
+            break;
+
+            case TokenType.IDENTIFIER:
+                
+                // get the identifier name
+                var identifierName = current.value as string;
+                
+                // if state is empty then crash
+                if(state.length === 0){
+                    throw new Error(`Invalid expression: ${current.value}`);
+                }
+
+                // not has more tokens
+                if(!tokens.hasNext()){
+                    // set the expression as a identifier expression
+                    belong.type = 'IdentifierExpression';
+                    belong.setName(identifierName);
+                    break;
+                }
+
+                let peekToken = tokens.peek();
+                // if the token is a comma, semi-colon, EOF
+                // then define the expression as a identifier expression
+                if(peekToken.value === ',' || peekToken.value === ';' 
+                || peekToken.value === 'EOF'
+                || peekToken.value === ")"
+                || isPrincipalKeyword(peekToken.value)){
+                    // set the expression as a identifier expression
+                    belong.type = 'IdentifierExpression';
+                    belong.setName(identifierName);
+                    break;
+                }
+
+                // if the next is a operator
+                current = tokens.peekAndNext();
+
+                if(current.type === TokenType.OPERATOR)
+                {
+                    // is a binary expression
+                    // set new expression container on the left
+                    var left = new ExpressionContainer("IdentifierExpression");
+                    // set the name of the left expression
+                    left.setName(identifierName);
+
+                    // set belong expression as BinaryExpression
+                    belong.type = ("BinaryExpression");
+
+                    // set new expression container on the right
+                    var right = new ExpressionContainer();
+                    buildExpression(tokens, right, state);
+
+                    // set the operator in belong expression
+                    belong.setOperator(current.value as string);
+                  
+                    // set the left expression
+                    belong.setLeftNode(left);
+                    // set the right expression
+                    belong.setRightNode(right);
+                    
+                }else if(isOpenParenthesis(current.value)){
+                    // then is a function expression
+                    // set belong expression as FunctionExpression
+                    belong.type = ("FunctionExpression");
+                    // add function scope in the state
+                    state.push('FUNCTION_SCOPE');
+                    // set the name of the function
+                    belong.setName(identifierName);
+                    // set the arguments of the function
+                    // find arguments until the next close parenthesis
+                    let argExpression = new ExpressionContainer();
+                    buildExpression(tokens, argExpression, state);
+                    belong.setList(argExpression);
+                    // check if the next is a close parenthesis
+                    if(tokens.nextEqualToCloseParenthesis()){
+                        state.pop();
+                    }else{
+                        throw new Error(`Invalid expression: ${current.value}`);
                     }
                 }
-            }else{
-                // if not has more tokens, the current token is operator or open parenthesis
-                // then throw error with msg: unexpected end of expression
-                if(operator || openParenthesis){
-                    throw new Error('Unexpected end of expression: ' + currentToken.value);
-                }else if(literal){
-                    belong.type = "Literal";
-                    belong.info['type'] = currentToken.type;
-                    belong.info['value'] = currentToken.value;
-                }else if(identifier){
-                    belong.type = "IndentifierExpression";
-                    belong.info['name'] = currentToken.value;
-                }                   
-            }
-        }else{
-            throw new Error('Invalid expression, unexpected token: ' + currentToken.value);
-        }
-    break;
-    case "ListExpression":
-        // the first token should be a literal, identifier or expression
-        ExcpectListExpression();
-        break;
-    default:
-        throw new Error('Invalid expectation: ' + currentExcptection);
-    }
+            break;
 
-    // this function treat the next tokens as a list expression
-    function ExcpectListExpression() {
-        let listExpression: ExpressionTree[] = [];
-        do {
-            let expression = new ExpressionTree();
-            buildExpr(tokens, expression, "Expression");
-            listExpression.push(expression);
-            currentToken = tokens.peek();
-        } while (isComma(currentToken.value) && tokens.incrementIndex());
-        belong.type = "ListExpression";
-        belong.info['list'] = listExpression;
-    }
+            case TokenType.NUMBER:
+            case TokenType.STRING:
+            break;
+
+            case TokenType.OPERATOR:
+                    // verify the state scope is not empty
+                    // then crash with unexpected token
+                    if(state.length === 0)
+                    {
+                        throw new Error(`Invalid expression: ${current.value}`);
+                    }
+
+                    // the peek token shouldn't be a close parenthesis,
+                    // comma, semicolon,EOF or a operator
+                    // if it is, then crash with unexpected token
+                    let peek = tokens.peek();
+                    if(peek.type === TokenType.OPERATOR ||
+                        peek.value === ")" ||
+                        peek.type === TokenType.COMMA ||
+                        peek.type === TokenType.SEMICOLON ||
+                        peek.type === TokenType.EOF){
+                        throw new Error(`Invalid expression: ${current.value}`);
+                    }
+
+                    belong.setOperator(current.value as string);
+                    // set unary expression
+                    belong.type = ("UnaryExpression");
+                    // build the expression on the right
+                    let rightNode = new ExpressionContainer();
+                    buildExpression(tokens, rightNode, state);
+                    // set belong right expression
+                    belong.setRightNode(rightNode);
+            break;
+
+            case TokenType.PARENTHESIS:
+                // if the next is a open parenthesis
+                if(isOpenParenthesis(current.value)){
+                    // get expression container
+                    var expr = new ExpressionContainer();
+                    // add expression scope in the state
+                    state.push('EXPRESSION_SCOPE');
+                    // build the expression
+                    buildExpression(tokens, expr, state);
+
+                    // if is close parenthesis then remove the expression scope
+                    if(tokens.nextEqualToCloseParenthesis()){
+                        tokens.incrementIndex();
+                        state.pop();
+                    }else{
+                        throw new Error(`Invalid expression: ${current.value}`);
+                    }
+
+                    // get next token
+                    current = tokens.peekAndNext();
+                    // verify if is a operator
+                    if(current.type === TokenType.OPERATOR){
+                        // then set binary expression
+                        belong.type = ("BinaryExpression");
+                        // set the operator in belong expression
+                        belong.setOperator(current.value);
+                        // set the left expression
+                        belong.setLeftNode(expr);
+                        // set the right expression
+                        let rightNode = new ExpressionContainer();
+                        belong.setRightNode(rightNode);
+                        // build right expression
+                        buildExpression(tokens, rightNode, state);
+                    }
+                }else{
+                    // if is close parenthesis then remove the expression scope
+                    if(tokens.nextEqualToCloseParenthesis()){
+                        state.pop();
+                    }else{
+                        throw new Error(`Invalid expression: ${current.value}`);
+                    }
+                }
+            break;
+
+            case TokenType.COMMA:
+            break;
+
+            case TokenType.SEMICOLON:
+            break;
+
+            case TokenType.EOF:
+            break;
+
+        default:
+            throw new Error('Invalid token type: ' + current.type);
+        }
+
+        // if the state is not empty
+        /*if(state.length > 0){
+            buildExpression(tokens, belong, state);
+        }else{
+            // if the iterator is not the end of the tokens
+            // or has semi-colon or EOF
+            // then crash
+            if(!tokens.hasNext() 
+            && !tokens.isNext(TokenType.SEMICOLON) 
+            && !tokens.isNext(TokenType.EOF)){
+                throw new Error('Unexcpected end: ' + current.value);
+            }
+        }*/
 }

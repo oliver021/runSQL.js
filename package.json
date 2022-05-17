@@ -10,7 +10,7 @@
     "dev": "tsc -p ./ -w",
     "test": "npm run build:test && npm run run:test",
     "build:test": "tsc -p ./tests",
-    "run:test": "mocha ./.test-dist/tests"
+    "run:test": "mocha -r ts-node/register ./tests/**.ts"
   },
   "repository": {
     "type": "git",
@@ -37,6 +37,7 @@
     "chai": "^4.3.1",
     "deep-equal": "^2.0.5",
     "mocha": "^10.0.0",
+    "ts-node": "^10.7.0",
     "tslint": "^6.1.3",
     "typescript": "^4.1.5"
   },

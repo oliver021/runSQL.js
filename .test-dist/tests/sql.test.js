@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const chai_1 = require("chai");
 const sql_1 = require("../src/sql");
+const TokensIteration_1 = require("../src/TokensIteration");
+const util_1 = require("util");
 describe("Test sql lexer", () => {
     it("should tokenize the sql statement", () => {
         let sql = "select * from table where id = 1";
@@ -37,5 +39,29 @@ describe("Test sql lexer", () => {
         sql = "SELECT db.test.query";
         tokens = (0, sql_1.tokenize)(sql);
         (0, chai_1.expect)(tokens).to.deep.equal(["SELECT", "db", ".", "test", ".", "query"]);
+        sql = "SELECT db.test.query.test <> 1";
+        tokens = (0, sql_1.tokenize)(sql);
+        (0, chai_1.expect)(tokens).to.deep.equal(["SELECT", "db", ".", "test", ".", "query", ".", "test", "<>", "1"]);
+        sql = "SELECT ((1 + 1) * 2)";
+        tokens = (0, sql_1.tokenize)(sql);
+        (0, chai_1.expect)(tokens).to.deep.equal(["SELECT", "(", "(", "1", "+", "1", ")", "*", "2", ")"]);
+    });
+});
+describe("Test sql syntaxt parser", () => {
+    it("should parse the sql statement", () => {
+        var tokens = (0, sql_1.tokenize)("SELECT data");
+        var iter = new TokensIteration_1.TokensIteration(tokens);
+        var root = new sql_1.ExpressionContainer();
+        (0, sql_1.buildExpression)(iter, root, []);
+        console.log(root);
+        (0, chai_1.expect)(root.type).to.equal("RootClosure");
+        (0, chai_1.expect)(root.getPrincipalKeyword()).to.equal("SELECT");
+        let showOptions = { showHidden: false, depth: null, colors: true };
+        var tokens = (0, sql_1.tokenize)("SELECT ((amount1 + amount2) * rate) - discount");
+        console.log((0, util_1.inspect)(tokens, showOptions));
+        var iter = new TokensIteration_1.TokensIteration(tokens);
+        var root = new sql_1.ExpressionContainer();
+        (0, sql_1.buildExpression)(iter, root, []);
+        console.log((0, util_1.inspect)(root, showOptions));
     });
 });
